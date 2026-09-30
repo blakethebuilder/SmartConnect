@@ -303,6 +303,8 @@ async def handle_missed_call(caller: str, note: str, ext_id: str | None = None, 
 
 @app.post("/webhooks/yeastar")
 async def yeastar_webhook(request: Request):
+    raw = await request.body()
+    log.info(f"yeastar push raw: {raw[:800]}")
     """Yeastar P-Series call-end no-answer -> WhatsApp 'sorry we missed you' + lead."""
     form = None
     try:
