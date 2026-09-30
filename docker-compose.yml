@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Africa/Johannesburg
-      - PB_ADMIN_EMAIL=${PB_ADMIN_EMAIL:?set PB_ADMIN_EMAIL in .env}
-      - PB_ADMIN_PASSWORD=${PB_ADMIN_PASSWORD:?set PB_ADMIN_PASSWORD in .env}
+      - PB_ADMIN_EMAIL=${PB_ADMIN_EMAIL}
+      - PB_ADMIN_PASSWORD=${PB_ADMIN_PASSWORD}
     volumes:
       - smartconnect_pb_data:/pb/pb_data
     ports:
