@@ -127,3 +127,61 @@ button.ghost:hover { color: var(--txt); border-color: #2c3b5e; }
   button { width: auto; }
   input + input, input + textarea { margin-top: 10px; }
 }
+/* --- SaaS chrome --- */
+.brandmark {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 17px; letter-spacing: -.03em; color: #04140c;
+  background: linear-gradient(135deg, var(--emerald), var(--emerald-deep));
+  box-shadow: 0 4px 18px rgba(16,185,129,.35);
+  flex: none;
+}
+.brandmark.sm { width: 36px; height: 36px; font-size: 14px; border-radius: 10px; }
+.hero { text-align: center; margin-bottom: 18px; }
+.hero .brandmark { margin: 0 auto; width: 56px; height: 56px; font-size: 20px; border-radius: 15px; }
+.hero p.small { max-width: 300px; margin: 0 auto; }
+.appbar {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(16,23,40,.75); backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.appbar strong { font-size: 15px; }
+.section-head { margin: 6px 2px 12px; }
+.section-head h2 { font-size: 18px; margin: 0; letter-spacing: -.02em; }
+.section-head .small { margin: 2px 0 0; }
+.list-head { margin: 16px 2px 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+
+/* stats grid */
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+.stat {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px; display: flex; flex-direction: column; gap: 2px;
+}
+.stat-n { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+.stat-l { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+
+/* badges */
+.badge {
+  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+  white-space: nowrap; flex: none;
+}
+.badge.ok { background: rgba(16,185,129,.15); color: var(--emerald); border: 1px solid rgba(16,185,129,.35); }
+.badge.warn { background: rgba(249,115,22,.14); color: #fb923c; border: 1px solid rgba(249,115,22,.35); }
+.badge.off { background: rgba(248,113,113,.12); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+
+/* empty states */
+.empty { text-align: center; padding: 28px 16px; }
+.empty-icon { font-size: 30px; margin-bottom: 8px; }
+.empty p.small { margin: 4px auto 0; max-width: 320px; }
+
+/* inline field rows */
+.field-row { display: flex; gap: 8px; }
+.field-row input { margin-top: 0 !important; }
+.field-row button { margin: 0; }
+.label { margin: 10px 0 4px !important; }
+
+@media (min-width: 560px) {
+  .stats { grid-template-columns: repeat(4, 1fr); }
+}
