@@ -1,19 +1,129 @@
-:root { --orange: #f97316; --emerald: #059669; --bg: #f5f5f4; }
-* { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: #1c1917; }
-input, select, textarea { font-size: 16px; padding: 10px; border: 1px solid #d6d3d1; border-radius: 8px; width: 100%; }
-button { font-size: 16px; padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; background: var(--emerald); color: #fff; }
-button.edit { background: var(--orange); }
-button.ghost { background: #e7e5e4; color: #1c1917; }
-.wrap { max-width: 720px; margin: 0 auto; padding: 12px; }
-.nav { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 12px; }
-.nav button { background: #e7e5e4; color: #1c1917; white-space: nowrap; }
-.nav button.on { background: #1c1917; color: #fff; }
-.card { background: #fff; border: 1px solid #e7e5e4; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
-.bar { height: 8px; background: #e7e5e4; border-radius: 4px; overflow: hidden; margin: 6px 0; }
-.bar > div { height: 100%; background: var(--emerald); }
-.row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-.small { color: #78716c; font-size: 13px; }
-h1 { font-size: 20px; margin: 8px 0 12px; }
-h3 { margin: 0 0 6px; font-size: 15px; }
-.err { color: #dc2626; font-size: 14px; }
+/* SmartConnect — dark fintech, spec-card aesthetic. Mobile-first. */
+:root {
+  --bg: #0a0f1a;
+  --panel: #101728;
+  --panel-2: #141d31;
+  --line: #1e2a44;
+  --txt: #e8edf7;
+  --dim: #8494b0;
+  --emerald: #10b981;
+  --emerald-deep: #059669;
+  --orange: #f97316;
+  --radius: 14px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { color-scheme: dark; }
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(1100px 500px at 80% -10%, rgba(16,185,129,.10), transparent 60%),
+    radial-gradient(900px 420px at 0% 0%, rgba(249,115,22,.07), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--txt);
+  font-size: 16px; /* no iOS zoom */
+  line-height: 1.45;
+  min-height: 100dvh;
+}
+
+.wrap { max-width: 680px; margin: 0 auto; padding: 16px 16px 40px; }
+.row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.row:first-child h1 { flex: 1; }
+
+h1 {
+  font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 4px 0 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+h1::before {
+  content: ''; width: 10px; height: 10px; border-radius: 3px; flex: none;
+  background: linear-gradient(135deg, var(--emerald), var(--emerald-deep));
+  box-shadow: 0 0 12px rgba(16,185,129,.6);
+}
+h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.small { color: var(--dim); font-size: 13px; }
+.err { color: #f87171; font-size: 14px; margin: 8px 0 0; }
+
+/* cards */
+.card {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(2,6,17,.35);
+}
+
+/* inputs */
+input, select, textarea {
+  font-size: 16px; font-family: inherit;
+  padding: 12px 13px;
+  background: #0c1322;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  width: 100%;
+  color: var(--txt);
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus, textarea:focus {
+  outline: none; border-color: var(--emerald);
+  box-shadow: 0 0 0 3px rgba(16,185,129,.15);
+}
+input::placeholder, textarea::placeholder { color: #566a8c; }
+textarea { resize: vertical; min-height: 96px; }
+input + input, input + textarea { margin-top: 8px; }
+
+/* buttons */
+button {
+  font-size: 16px; font-weight: 600; font-family: inherit;
+  padding: 12px 18px;
+  border: 0; border-radius: 10px; cursor: pointer;
+  background: linear-gradient(180deg, var(--emerald), var(--emerald-deep));
+  color: #04140c;
+  width: 100%;
+  margin-top: 10px;
+  transition: filter .15s, transform .05s;
+}
+button:hover:not(:disabled) { filter: brightness(1.08); }
+button:active:not(:disabled) { transform: scale(.985); }
+button:disabled { opacity: .5; cursor: default; }
+button.edit { background: linear-gradient(180deg, #fb923c, var(--orange)); color: #1a0d02; }
+button.ghost {
+  background: transparent; border: 1px solid var(--line); color: var(--dim);
+  width: auto; margin-top: 0; padding: 8px 14px; font-size: 14px;
+}
+button.ghost:hover { color: var(--txt); border-color: #2c3b5e; }
+
+/* nav */
+.nav {
+  display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px;
+  padding: 4px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav button {
+  width: auto; margin: 0; padding: 9px 14px; font-size: 14px;
+  background: transparent; color: var(--dim); border-radius: 8px; white-space: nowrap;
+}
+.nav button.on {
+  background: var(--emerald); color: #04140c;
+  box-shadow: 0 2px 10px rgba(16,185,129,.35);
+}
+
+/* usage bar */
+.bar {
+  height: 10px; background: #0c1322; border: 1px solid var(--line);
+  border-radius: 6px; overflow: hidden; margin: 8px 0;
+}
+.bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--emerald-deep), var(--emerald));
+  border-radius: 5px;
+  transition: width .4s ease;
+}
+
+@media (min-width: 480px) {
+  .wrap { padding-top: 48px; }
+  button { width: auto; }
+  input + input, input + textarea { margin-top: 10px; }
+}
