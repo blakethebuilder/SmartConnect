@@ -268,6 +268,17 @@ async def health():
     return {"ok": True}
 
 
+async def notify_owner(client: dict, caller: str, did: str | None) -> None:
+    """Both ways: owner gets a heads-up 'xyz called, we replied for you'."""
+    n = client.get("notify_number") or ""
+    if n and is_sa_mobile(n):
+        try:
+            await evolution_send(client, n, f"📞 Missed call from {caller} on {did or client.get('missed_call_number') or 'your line'} — we've WhatsApped them for you.")
+        except Exception as e:
+            log.warning(f"owner notify failed: {e}")  # never blocks the customer reply
+
+
+
 async def handle_missed_call(caller: str, note: str, ext_id: str | None = None, did: str | None = None) -> dict:
     """Missed call -> dedupe -> WhatsApp 'sorry we missed you' -> lead. Shared by webhook + poller."""
     if ext_id:
@@ -294,6 +305,7 @@ async def handle_missed_call(caller: str, note: str, ext_id: str | None = None, 
         )
     except Exception as e:
         log.error("Missed-call WhatsApp send failed: %s", e)
+    await notify_owner(client, caller, did if "did" in dir() else None)
     lead = await pb_create("leads", {
         "client": client["id"], "phone": caller, "intent": "missed_call",
         "notes": note, "status": "new", "source": "yeastar", "ext_id": ext_id or "",
@@ -341,6 +353,7 @@ async def yeastar_webhook(request: Request):
         )
     except Exception as e:
         log.error("Missed-call WhatsApp send failed: %s", e)
+    await notify_owner(client, caller, None)
     lead = await pb_create("leads", {
         "client": client["id"], "phone": caller, "intent": "missed_call",
         "notes": f"Yeastar no-answer ({parsed['event']})", "status": "new", "source": "yeastar",
