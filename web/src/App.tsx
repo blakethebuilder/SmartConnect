@@ -271,15 +271,18 @@ function WaConnect({ me }: { me: RecordModel }) {
     try { const r = await fetch('/api/whatsapp/state', { headers: { Authorization: pb.authStore.token } }); const d = await r.json(); setState(d.state) } catch {}
   }
   useEffect(() => { if (me.evolution_instance) poll() }, [])
-  useEffect(() => { if (state && state !== 'open' && qr) { const t = setInterval(poll, 4000); return () => clearInterval(t) } }, [state, qr])
+  // keep watching: disconnected => show reconnect QR automatically
+  useEffect(() => { if (me.evolution_instance && state && state !== 'open') { const t = setInterval(poll, 10000); return () => clearInterval(t) } }, [state, me.evolution_instance])
+  useEffect(() => { if (qr && state !== 'open') { const t = setInterval(poll, 4000); return () => clearInterval(t) } }, [state, qr])
   return <>
-    {state === 'open' && <p className="small" style={{ color: 'var(--ok, #10b981)' }}>Connected ✓ — {me.evolution_instance}</p>}
+    {state === 'open' && <p className="small" style={{ color: 'var(--emerald)' }}>Connected ✓ — {me.evolution_instance}</p>}
+    {state && state !== 'open' && state !== 'connecting' && <p className="err">⚠️ WhatsApp disconnected ({state}) — scan again to reconnect.</p>}
     <button className="edit" disabled={busy} onClick={async () => {
       setBusy(true); try {
         const r = await fetch('/api/whatsapp/connect', { method: 'POST', headers: { Authorization: pb.authStore.token } })
         const d = await r.json(); setQr(d.qr || ''); setPairing(d.pairing || ''); setState('connecting'); poll()
       } finally { setBusy(false) }
-    }}>{busy ? 'Preparing…' : qr ? 'New QR code' : 'Connect via QR code'}</button>
+    }}>{busy ? 'Preparing…' : qr ? 'New QR code' : state === 'open' ? 'Reconnect via QR code' : 'Connect via QR code'}</button>
     {qr && <img src={qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`} alt="WhatsApp QR" style={{ width: 220, marginTop: 12, borderRadius: 8 }} />}
     {pairing && !qr && <p className="small">Or enter pairing code on your phone: <b>{pairing}</b></p>}
   </>
