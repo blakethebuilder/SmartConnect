@@ -55,3 +55,9 @@ services:
 
 volumes:
   smartconnect_pb_data:
+
+# ponytail: attach to dokploy's overlay so Traefik can resolve container names
+networks:
+  default:
+    name: dokploy-network
+    external: true
