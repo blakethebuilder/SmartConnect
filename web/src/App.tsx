@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { pb, API } from './pb'
+import Landing from './Landing'
 import type { RecordModel } from 'pocketbase'
 
 // ponytail: one file, six tabs — split only if a tab grows past ~150 lines
@@ -7,8 +8,9 @@ type Tab = 'Overview' | 'Leads' | 'Broadcast' | 'Payments' | 'Contacts' | 'Setti
 
 export default function App() {
   const [client, setClient] = useState<RecordModel | null>(() => pb.authStore.record as any)
+  const [showLogin, setShowLogin] = useState(false)
   useEffect(() => pb.authStore.onChange(() => setClient(pb.authStore.record as any)), [])
-  if (!client) return <Login onOk={setClient} />
+  if (!client) return showLogin ? <Login onOk={setClient} /> : <Landing onEnter={() => setShowLogin(true)} />
   return <Dashboard me={client} />
 }
 
