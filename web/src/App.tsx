@@ -14,18 +14,24 @@ export default function App() {
 }
 
 function Login({ onOk }: { onOk: (c: RecordModel) => void }) {
-  const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [err, setErr] = useState('')
+  const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [name, setName] = useState(''), [err, setErr] = useState('')
   return (
     <div className="wrap" style={{ maxWidth: 360, marginTop: 80 }}>
       <h1>SmartConnect</h1>
       <div className="card">
+        <input placeholder="Business name" value={name} onChange={e => setName(e.target.value)} style={{ marginBottom: 8 }} />
         <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} style={{ marginBottom: 8 }} />
         <input placeholder="Password" type="password" value={pw} onChange={e => setPw(e.target.value)} style={{ marginBottom: 8 }} />
         {err && <p className="err">{err}</p>}
         <button onClick={async () => {
           try { await pb.collection('clients').authWithPassword(email, pw); onOk(pb.authStore.record!) }
-          catch { setErr('Login failed — check email/password') }
-        }}>Sign in</button>
+          catch {
+            try {
+              await pb.collection('clients').create({ email, password: pw, passwordConfirm: pw, name: name || email.split('@')[0] })
+              await pb.collection('clients').authWithPassword(email, pw); onOk(pb.authStore.record!)
+            } catch { setErr('Login failed — new accounts need email + 8+ char password') }
+          }
+        }}>Sign in / Sign up</button>
       </div>
     </div>
   )
