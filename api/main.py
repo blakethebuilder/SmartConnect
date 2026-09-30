@@ -30,6 +30,10 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 NETCASH_SERVICE_ID = os.environ.get("NETCASH_SERVICE_ID", "")
 NETCASH_HASH_KEY = os.environ.get("NETCASH_HASH_KEY", "")
+YEASTAR_BASE = os.environ.get("YEASTAR_BASE_URL", "").rstrip("/")  # https://host/openapi/v1.0
+YEASTAR_ID = os.environ.get("YEASTAR_CLIENT_ID", "")
+YEASTAR_SECRET = os.environ.get("YEASTAR_CLIENT_SECRET", "")
+YEASTAR_POLL_ON = os.environ.get("YEASTAR_POLL", "1") == "1"
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8080")
 WORKER_ON = os.environ.get("BROADCAST_WORKER", "1") == "1"
 
@@ -256,6 +260,31 @@ def parse_yeastar(raw) -> dict | None:
 @app.get("/health")
 async def health():
     return {"ok": True}
+
+
+async def handle_missed_call(caller: str, note: str, ext_id: str | None = None) -> dict:
+    """Missed call -> dedupe -> WhatsApp 'sorry we missed you' -> lead. Shared by webhook + poller."""
+    if ext_id:
+        seen = await pb_list("leads", filter=f'ext_id = "{ext_id}"', perPage=1)
+        if seen:
+            return {"ok": True, "duplicate": True}
+    clients = await pb_list("clients", filter="active = true", perPage=200)
+    if not clients:
+        return {"ok": True, "skipped": "no client"}
+    # ponytail: single active client wins; when we have multiple clients pass did_number and match missed_call_number
+    client = clients[0]
+    try:
+        await evolution_send(
+            client, caller,
+            f"Sorry we missed your call. This is {client.get('name', 'us')} — reply here and we'll help you right away.",
+        )
+    except Exception as e:
+        log.error("Missed-call WhatsApp send failed: %s", e)
+    lead = await pb_create("leads", {
+        "client": client["id"], "phone": caller, "intent": "missed_call",
+        "notes": note, "status": "new", "source": "yeastar", "ext_id": ext_id or "",
+    })
+    return {"ok": True, "lead": lead["id"], "called": caller}
 
 
 @app.post("/webhooks/yeastar")
@@ -550,10 +579,70 @@ async def broadcast_worker():
             await asyncio.sleep(10)
 
 
+# ---------------------------------------------------------------- Yeastar CDR poller
+_yt_token: str | None = None
+_yt_token_exp = 0.0
+
+
+async def yt_token() -> str:
+    global _yt_token, _yt_token_exp
+    if _yt_token and time.monotonic() < _yt_token_exp - 60:
+        return str(_yt_token)
+    async with httpx.AsyncClient(timeout=15) as cl:
+        r = await cl.post(f"{YEASTAR_BASE}/get_token", headers={"User-Agent": "OpenAPI"},
+                          json={"username": YEASTAR_ID, "password": YEASTAR_SECRET})
+        r.raise_for_status()
+        d = r.json()
+    if d.get("errcode") != 0:
+        raise RuntimeError(f"Yeastar get_token: {d}")
+    _yt_token = str(d["access_token"])
+    _yt_token_exp = time.monotonic() + 1700
+    return _yt_token
+
+
+async def yeastar_poller():
+    """Poll PBX CDR list every 60s; first pass = baseline (mark seen, send nothing)."""
+    log.info("yeastar poller started (%s)", YEASTAR_BASE)
+    baseline = True
+    seen_top = ""
+    while True:
+        try:
+            tok = await yt_token()
+            async with httpx.AsyncClient(timeout=30) as cl:
+                r = await cl.get(f"{YEASTAR_BASE}/cdr/list", params={
+                    "access_token": tok, "page_size": 50, "sort_by": "uid", "order_by": "desc",
+                }, headers={"User-Agent": "OpenAPI"})
+                r.raise_for_status()
+                rows = r.json().get("data") or []
+            if baseline:
+                seen_top = rows[0]["uid"] if rows else ""
+                log.info("yeastar baseline: %d CDRs, top uid %s", len(rows), seen_top)
+                baseline = False
+            else:
+                for c in rows:
+                    if c["uid"] == seen_top:
+                        break
+                    if c.get("call_type") == "Inbound" and c.get("last_status") in ("NO ANSWER", "ABANDONED"):
+                        caller = norm_phone(str(c.get("call_from_number") or c.get("call_from") or ""))
+                        if caller:
+                            await handle_missed_call(
+                                caller,
+                                f"Yeastar missed call ({c.get('last_status')}) {c.get('time', '')}",
+                                ext_id=c["uid"],
+                            )
+                if rows:
+                    seen_top = rows[0]["uid"]
+        except Exception as e:
+            log.error("yeastar poll error: %s", e)
+        await asyncio.sleep(60)
+
+
 @app.on_event("startup")
 async def startup():
     if WORKER_ON:
         asyncio.create_task(broadcast_worker())
+    if YEASTAR_POLL_ON and YEASTAR_BASE:
+        asyncio.create_task(yeastar_poller())
 
 
 @app.get("/broadcast/run-once")
