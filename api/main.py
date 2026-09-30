@@ -389,6 +389,17 @@ async def evolution_webhook(request: Request):
         "notes": text[:500], "status": "new", "source": "whatsapp",
     })
 
+    # Inbound reply = opt-in contact (upsert, one contact per client+phone)
+    existing = await pb_list("contacts", filter=f'client = "{client["id"]}" && phone = "{phone}"', perPage=1)
+    if existing:
+        if not existing[0].get("optin"):
+            await pb_update("contacts", existing[0]["id"], {"optin": True})
+    else:
+        await pb_create("contacts", {
+            "client": client["id"], "phone": phone, "name": (msg.get("pushName") or "")[:80],
+            "optin": True, "stopped": False,
+        })
+
     if intent == "payment":
         await create_payment_link(client, phone)
     else:
