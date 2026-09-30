@@ -38,6 +38,8 @@ services:
       - YEASTAR_CLIENT_ID=${YEASTAR_CLIENT_ID:-}
       - YEASTAR_CLIENT_SECRET=${YEASTAR_CLIENT_SECRET:-}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8080}
+      - EVOLUTION_BASE_URL=${EVOLUTION_BASE_URL:-https://whatsapp.smartintegrate.co.za}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-}
       - BROADCAST_WORKER=${BROADCAST_WORKER:-1}
     extra_hosts:
       - "host.docker.internal:host-gateway"

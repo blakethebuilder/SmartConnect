@@ -488,6 +488,69 @@ async def broadcasts_create(request: Request):
     return {"broadcast": bc, "queued": len(contacts)}
 
 
+
+# ---------------------------------------------------------------- WhatsApp self-service connect
+# ponytail: our hosted Evolution, one instance per client; admin key stays server-side.
+EVOLUTION_BASE = os.environ.get("EVOLUTION_BASE_URL", "https://whatsapp.smartintegrate.co.za").rstrip("/")
+EVOLUTION_KEY = os.environ.get("EVOLUTION_API_KEY", "")
+
+
+async def auth_client_record(token: str) -> dict:
+    async with httpx.AsyncClient(timeout=15) as cl:
+        r = await cl.post(f"{PB_URL}/api/collections/clients/auth-refresh",
+                          headers={"Authorization": token})
+        r.raise_for_status()
+        return r.json()["record"]
+
+
+def _bearer(request: Request) -> str:
+    return (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+
+
+@app.post("/api/whatsapp/connect")
+async def whatsapp_connect(request: Request):
+    rec = await auth_client_record(_bearer(request))
+    inst = rec.get("evolution_instance") or f"sc_{rec['id'][:12]}"
+    h = {"apikey": EVOLUTION_KEY}
+    qr: dict = {}
+    async with httpx.AsyncClient(timeout=30) as cl:
+        r = await cl.post(f"{EVOLUTION_BASE}/instance/create", headers=h,
+                          json={"instanceName": inst, "qrcode": True})
+        try:
+            qr = r.json().get("qrcode") or {}
+        except Exception:
+            qr = {}
+        if not qr:
+            r2 = await cl.get(f"{EVOLUTION_BASE}/instance/connect/{inst}", headers=h)
+            try:
+                d2 = r2.json()
+                qr = d2.get("qrcode") or {"base64": d2.get("base64", ""), "code": d2.get("code", "")}
+            except Exception:
+                qr = {}
+        # inbound relay -> our webhook
+        await cl.post(f"{EVOLUTION_BASE}/webhook/set/{inst}", headers=h, json={
+            "webhook": {"enabled": True, "url": f"{PUBLIC_BASE_URL}/webhooks/evolution",
+                        "webhookByEvents": False, "events": ["MESSAGES_UPSERT"]}})
+    await pb_update("clients", rec["id"], {
+        "evolution_url": EVOLUTION_BASE, "evolution_instance": inst, "evolution_apikey": EVOLUTION_KEY})
+    return {"ok": True, "instance": inst, "qr": qr.get("base64", ""), "pairing": qr.get("code", "")}
+
+
+@app.get("/api/whatsapp/state")
+async def whatsapp_state(request: Request):
+    rec = await auth_client_record(_bearer(request))
+    inst = rec.get("evolution_instance")
+    if not inst:
+        return {"state": "not_connected"}
+    async with httpx.AsyncClient(timeout=15) as cl:
+        r = await cl.get(f"{EVOLUTION_BASE}/instance/connectionState/{inst}",
+                         headers={"apikey": EVOLUTION_KEY})
+        try:
+            return {"state": r.json().get("instance", {}).get("state", "unknown")}
+        except Exception:
+            return {"state": "unknown"}
+
+
 @app.post("/webhooks/netcash")
 async def netcash_webhook(request: Request):
     """Netcash Notify callback. Verify SHA1 signature (fail closed), mark paid."""
