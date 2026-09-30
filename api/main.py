@@ -268,7 +268,7 @@ async def health():
     return {"ok": True}
 
 
-async def handle_missed_call(caller: str, note: str, ext_id: str | None = None) -> dict:
+async def handle_missed_call(caller: str, note: str, ext_id: str | None = None, did: str | None = None) -> dict:
     """Missed call -> dedupe -> WhatsApp 'sorry we missed you' -> lead. Shared by webhook + poller."""
     if ext_id:
         seen = await pb_list("leads", filter=f'ext_id = "{ext_id}"', perPage=1)
@@ -279,8 +279,14 @@ async def handle_missed_call(caller: str, note: str, ext_id: str | None = None) 
     clients = await pb_list("clients", filter="active = true", perPage=200)
     if not clients:
         return {"ok": True, "skipped": "no client"}
-    # ponytail: single active client wins; when we have multiple clients pass did_number and match missed_call_number
-    client = clients[0]
+    if len(clients) > 1 and did:
+        routed = [c for c in clients if digits_of(c.get("missed_call_number")) == digits_of(did)]
+        if not routed:
+            return {"ok": True, "skipped": f"no client for did {did}"}
+        client = routed[0]
+    else:
+        # ponytail: single active client wins; DID routing kicks in once client #2 lands
+        client = clients[0]
     try:
         await evolution_send(
             client, caller,
@@ -643,11 +649,12 @@ async def yeastar_poller():
                         break
                     if c.get("call_type") == "Inbound" and c.get("last_status") in ("NO ANSWER", "ABANDONED"):
                         caller = norm_phone(str(c.get("call_from_number") or c.get("call_from") or ""))
+                        did = norm_phone(str(c.get("did_number") or c.get("call_to_number") or ""))
                         if caller:
                             await handle_missed_call(
                                 caller,
                                 f"Yeastar missed call ({c.get('last_status')}) {c.get('time', '')}",
-                                ext_id=c["uid"],
+                                ext_id=c["uid"], did=did,
                             )
                 if rows:
                     seen_top = rows[0]["uid"]
