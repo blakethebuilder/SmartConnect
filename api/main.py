@@ -202,6 +202,12 @@ def digits_of(s) -> int:
     return int(d) if d else 0
 
 
+def is_sa_mobile(phone: str) -> bool:
+    """SA cellphone only: last 9 digits start 6/7/8 (e.g. 082.../276...)."""
+    d = re.sub(r"\D", "", phone or "")
+    return len(d) >= 9 and d[-9] in "678"
+
+
 # ---------------------------------------------------------------- Missed-call
 def parse_yeastar(raw) -> dict | None:
     """Extract caller src + end-disposition from a Yeastar P-Series call-end payload.
@@ -268,6 +274,8 @@ async def handle_missed_call(caller: str, note: str, ext_id: str | None = None) 
         seen = await pb_list("leads", filter=f'ext_id = "{ext_id}"', perPage=1)
         if seen:
             return {"ok": True, "duplicate": True}
+    if not is_sa_mobile(caller):
+        return {"ok": True, "skipped": "not a cellphone"}
     clients = await pb_list("clients", filter="active = true", perPage=200)
     if not clients:
         return {"ok": True, "skipped": "no client"}
