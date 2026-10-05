@@ -16,7 +16,7 @@ export default function App() {
 }
 
 function Login({ onOk }: { onOk: (c: RecordModel) => void }) {
-  const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [name, setName] = useState(''), [err, setErr] = useState('')
+  const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [name, setName] = useState(''), [err, setErr] = useState(''), [showName, setShowName] = useState(false)
   return (
     <div className="wrap" style={{ maxWidth: 400 }}>
       <div className="hero">
@@ -25,14 +25,15 @@ function Login({ onOk }: { onOk: (c: RecordModel) => void }) {
         <p className="small" style={{ textAlign: 'center' }}>WhatsApp broadcasts, missed-call capture & instant payment links — for South African businesses.</p>
       </div>
       <div className="card">
-        <h3>Create your workspace</h3>
-        <input placeholder="Business name" value={name} onChange={e => setName(e.target.value)} />
+        <h3>Sign in to SmartConnect</h3>
+        {showName && <input placeholder="Business name" value={name} onChange={e => setName(e.target.value)} />}
         <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input placeholder="Password (8+ characters)" type="password" value={pw} onChange={e => setPw(e.target.value)} />
         {err && <p className="err">{err}</p>}
         <button onClick={async () => {
           try { await pb.collection('clients').authWithPassword(email, pw); onOk(pb.authStore.record!) }
           catch {
+            setShowName(true)
             try {
               await pb.collection('clients').create({ email, password: pw, passwordConfirm: pw, name: name || email.split('@')[0] })
               await pb.collection('clients').authWithPassword(email, pw); onOk(pb.authStore.record!)
