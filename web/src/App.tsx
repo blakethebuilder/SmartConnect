@@ -66,6 +66,7 @@ function Dashboard({ me }: { me: RecordModel }) {
       {tab === 'Payments' && <Payments me={me} />}
       {tab === 'Contacts' && <Contacts me={me} />}
       {tab === 'Settings' && <Settings me={me} />}
+      {tab === 'Admin' && <AdminPanel me={me} />}
     </div>
   )
 }
