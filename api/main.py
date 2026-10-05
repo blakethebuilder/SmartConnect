@@ -381,6 +381,9 @@ async def evolution_webhook(request: Request):
         return {"ok": True, "skipped": "empty text"}
     if key.get("fromMe"):
         return {"ok": True, "skipped": "outbound echo"}
+    # group chats get no leads and no auto-replies
+    if str(key.get("remoteJid", "")).endswith("@g.us"):
+        return {"ok": True, "skipped": "group chat"}
 
     phone = norm_phone(str(key.get("remoteJid", "")).split("@")[0])
     if not phone:
@@ -423,11 +426,7 @@ async def evolution_webhook(request: Request):
 
     if intent == "payment":
         await create_payment_link(client, phone)
-    else:
-        try:
-            await evolution_send(client, phone, "Thanks for your message! A consultant will get right back to you.")
-        except Exception as e:
-            log.error("Owner notify send failed: %s", e)
+    # ponytail: no blanket auto-reply — only the missed-call flow sends outbound
     return {"ok": True, "lead": lead["id"], "intent": intent}
 
 
