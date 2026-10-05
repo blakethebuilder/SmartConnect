@@ -116,7 +116,7 @@ function Overview({ me }: { me: RecordModel }) {
   const sent = broadcasts.reduce((n, b) => n + (b.sent_count || 0), 0)
   const optins = contacts.filter(c => !c.stopped).length
   const rTotal = payments.filter(p => p.status === 'paid').reduce((n, p) => n + (p.amount || 0), 0)
-  const wired = !!(me.evolution_url && me.evolution_instance && me.evolution_apikey)
+  const wired = !!(me.evolution_url && me.evolution_instance) // ponytail: apikey exists server-side but PB hides it from client reads
   return <>
     <div className="stats">
       <div className="stat"><span className="stat-n">{leads.length}</span><span className="stat-l">Leads</span></div>
