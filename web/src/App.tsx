@@ -303,24 +303,127 @@ function WaConnect({ me }: { me: RecordModel }) {
 function AdminPanel({ me }: { me: RecordModel }) {
   const [name, setName] = useState(''), [email, setEmail] = useState(''), [pw, setPw] = useState(''), [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
-  return <Section title="New client" sub="Mint an account for a customer — they log in, scan the QR, you wire their PBX webhook.">
-    <div className="card">
-      <input placeholder="Business name" value={name} onChange={e => setName(e.target.value)} />
-      <input placeholder="Client email" value={email} onChange={e => setEmail(e.target.value)} />
-      <input placeholder="Password (8+ chars)" value={pw} onChange={e => setPw(e.target.value)} />
-      <button disabled={busy} onClick={async () => {
-        setBusy(true); setMsg('')
-        try {
-          const r = await fetch('/api/admin/clients', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pb.authStore.token}` }, body: JSON.stringify({ name, email, password: pw }) })
-          const d = await r.json()
-          if (!r.ok) throw new Error(d.detail || 'failed')
-          setMsg(`Created ${name} — pass them the email + password`); setName(''); setEmail(''); setPw('')
-        } catch (e: any) { setMsg(e.message) }
-        setBusy(false)
-      }}>{busy ? 'Creating…' : 'Create client'}</button>
-      {msg && <p className="small">{msg}</p>}
+  const [clients, setClients] = useState<any[]>([])
+  const [open, setOpen] = useState<string | null>(null)
+  const [stats, setStats] = useState<any[]>([])
+
+  const load = async () => {
+    try {
+      const h = { Authorization: `Bearer ${pb.authStore.token}` }
+      const [c, s] = await Promise.all([
+        fetch(API + '/admin/clients', { headers: h }).then(r => r.json()),
+        fetch(API + '/admin/stats?days=30', { headers: h }).then(r => r.json()),
+      ])
+      if (Array.isArray(c)) setClients(c)
+      if (Array.isArray(s)) setStats(s)
+    } catch { /* offline */ }
+  }
+  useEffect(() => { load() }, [])
+
+  const api = (cid: string, path: string, method = 'POST', body?: any) => async () => {
+    try {
+      const r = await fetch(`${API}/admin/clients/${cid}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pb.authStore.token}` }, body: body ? JSON.stringify(body) : undefined })
+      const d = await r.json()
+      setMsg(`${cid.slice(0, 6)}: ${d.detail || d.ok || 'saved'}`)
+      if (method !== 'POST' || path.includes('test')) load()
+    } catch (e: any) { setMsg(e.message) }
+  }
+
+  const dot = (v: any) => <span style={{ color: v === 'open' ? '#059669' : v ? '#d97706' : '#9ca3af' }}>●</span>
+
+  const maxV = Math.max(1, ...stats.flatMap((s: any) => s.series.map((p: any) => Math.max(p.leads, p.messages))))
+  const bars = (s: any) => (
+    <svg viewBox="0 0 300 40" style={{ width: '100%', maxWidth: 320, height: 40 }}>
+      {s.series.map((p: any, i: number) => (
+        <g key={p.day}>
+          <rect x={i * 10} y={40 - (p.leads / maxV) * 38} width={4} height={(p.leads / maxV) * 38} fill="#f97316" />
+          <rect x={i * 10 + 4} y={40 - (p.messages / maxV) * 38} width={4} height={(p.messages / maxV) * 38} fill="#059669" />
+        </g>
+      ))}
+    </svg>
+  )
+
+  return <>
+    <Section title="Mint client" sub="Mint an account for a customer — they log in, scan the QR, you wire their PBX webhook.">
+      <div className="card">
+        <input placeholder="Business name" value={name} onChange={e => setName(e.target.value)} />
+        <input placeholder="Client email" value={email} onChange={e => setEmail(e.target.value)} />
+        <input placeholder="Password (8+ chars)" value={pw} onChange={e => setPw(e.target.value)} />
+        <button disabled={busy} onClick={async () => {
+          setBusy(true); setMsg('')
+          try {
+            const r = await fetch('/api/admin/clients', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pb.authStore.token}` }, body: JSON.stringify({ name, email, password: pw }) })
+            const d = await r.json()
+            if (!r.ok) throw new Error(d.detail || 'failed')
+            setMsg(`Created ${name} — pass them the email + password`); setName(''); setEmail(''); setPw('')
+            load()
+          } catch (e: any) { setMsg(e.message) }
+          setBusy(false)
+        }}>{busy ? 'Creating…' : 'Create client'}</button>
+        {msg && <p className="small">{msg}</p>}
+      </div>
+    </Section>
+    <Section title="Clients" sub="Connection state, PBX wiring and 30-day activity.">
+      {clients.map((c: any) => {
+        const st = stats.find((s: any) => s.client === c.id)
+        return (
+          <div className="card" key={c.id}>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+              <b>{c.name || c.email}</b>
+              {dot(c.wa_state)} <span className="small">WhatsApp</span>
+              <span style={{ color: c.has_yeastar ? '#059669' : '#9ca3af' }}>●</span> <span className="small">PBX</span>
+              <span className="small">{c.leads_week ?? '–'} leads/wk</span>
+              <button onClick={() => setOpen(open === c.id ? null : c.id)}>{open === c.id ? 'Close' : 'Configure'}</button>
+            </div>
+            {open === c.id && <AdminEdit c={c} reload={load} />}
+            {st && bars(st)}
+          </div>
+        )
+      })}
+    </Section>
+  </>
+}
+
+function AdminEdit({ c, reload }: { c: any; reload: () => void }) {
+  const [f, setF] = useState<any>({
+    name: c.name || '', missed_call_number: c.missed_call_number || '', notify_number: c.notify_number || '',
+    evolution_url: '', evolution_instance: c.evolution_instance || '', evolution_apikey: '',
+    yeastar_base: c.yeastar_base || '', yeastar_username: c.yeastar_username || '', yeastar_password: '',
+  })
+  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value })
+  const [msg, setMsg] = useState('')
+  const save = async () => {
+    const body: any = {}
+    for (const [k, v] of Object.entries(f)) if (v !== '') body[k] = v
+    body.active = c.active
+    const r = await fetch(`${API}/admin/clients/${c.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pb.authStore.token}` }, body: JSON.stringify(body) })
+    const d = await r.json()
+    setMsg(r.ok ? 'Saved' : d.detail || 'failed')
+    if (r.ok) reload()
+  }
+  const test = async (kind: string) => {
+    const r = await fetch(`${API}/admin/clients/${c.id}/test/${kind}`, { method: 'POST', headers: { Authorization: `Bearer ${pb.authStore.token}` } })
+    const d = await r.json()
+    setMsg(`${kind}: ${d.ok ? 'OK' : 'FAIL'} — ${d.detail || ''}`)
+  }
+  const L = (k: string, ph: string) => <><p className="small label">{ph}</p><input value={f[k]} onChange={set(k)} placeholder={k.includes('apikey') || k.includes('password') ? 'leave blank to keep' : ''} /></>
+  return <>
+    {L('name', 'Business name')}
+    {L('missed_call_number', 'Missed-call DID')}
+    {L('notify_number', 'Owner notify number')}
+    {L('evolution_url', 'Evolution URL')}
+    {L('evolution_instance', 'Evolution instance')}
+    {L('evolution_apikey', 'Evolution API key')}
+    {L('yeastar_base', 'Yeastar PBX URL')}
+    {L('yeastar_username', 'Yeastar client ID')}
+    {L('yeastar_password', 'Yeastar secret')}
+    <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+      <button onClick={save}>Save</button>
+      <button onClick={() => test('whatsapp')}>Test WhatsApp</button>
+      <button onClick={() => test('yeastar')}>Test Yeastar</button>
     </div>
-  </Section>
+    {msg && <p className="small">{msg}</p>}
+  </>
 }
 
 function Settings({ me }: { me: RecordModel }) {
@@ -356,3 +459,4 @@ function Settings({ me }: { me: RecordModel }) {
     </div>
   </Section>
 }
+// buildcanary 131

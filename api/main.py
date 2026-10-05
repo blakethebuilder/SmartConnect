@@ -531,12 +531,113 @@ def _bearer(request: Request) -> str:
     return (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
 
 
-@app.post("/api/admin/clients")
-async def admin_create_client(request: Request):
-    """Admin-only: mint a client account (signup is closed)."""
+async def require_admin(request: Request) -> dict:
     rec = await auth_client_record(_bearer(request))
     if not rec.get("admin"):
         raise HTTPException(status_code=403, detail="Admin only")
+    return rec
+
+
+def _wa_state(client: dict):
+    try:
+        h = {"apikey": client["evolution_apikey"]}
+        async with httpx.AsyncClient(timeout=10) as cl:
+            r = cl.get(f"{client['evolution_url'].rstrip('/')}/instance/connectionState/{client['evolution_instance']}", headers=h)
+            return (r.json().get("instance") or {}).get("state")
+    except Exception:
+        return None
+
+
+def _has_yeastar(c: dict) -> bool:
+    return bool(c.get("yeastar_base") and c.get("yeastar_username") and c.get("yeastar_password"))
+
+
+@app.get("/api/admin/clients")
+async def admin_list_clients(request: Request):
+    await require_admin(request)
+    out = []
+    for c in await pb_list("clients", perPage=100, sort="-created"):
+        out.append({
+            "id": c["id"], "name": c.get("name"), "email": c.get("email"),
+            "active": c.get("active", False), "admin": c.get("admin", False),
+            "evolution_instance": c.get("evolution_instance"),
+            "missed_call_number": c.get("missed_call_number"), "notify_number": c.get("notify_number"),
+            "yeastar_base": c.get("yeastar_base"), "yeastar_username": c.get("yeastar_username"),
+            "has_evo": bool(c.get("evolution_url") and c.get("evolution_instance") and c.get("evolution_apikey")),
+            "has_yeastar": _has_yeastar(c),
+            "wa_state": _wa_state(c) if c.get("active") and c.get("evolution_url") else None,
+            "created": c.get("created"),
+        })
+    return out
+
+
+@app.patch("/api/admin/clients/{cid}")
+async def admin_update_client(cid: str, request: Request):
+    await require_admin(request)
+    body = await request.json()
+    allowed = {"name", "active", "admin", "missed_call_number", "notify_number",
+               "evolution_url", "evolution_instance", "evolution_apikey",
+               "yeastar_base", "yeastar_username", "yeastar_password"}
+    data = {k: v for k, v in body.items() if k in allowed and v != ""}  # ponytail: '' = keep existing (secrets)
+    if not data:
+        raise HTTPException(status_code=400, detail="No updatable fields")
+    return await pb_update("clients", cid, data)
+
+
+@app.post("/api/admin/clients/{cid}/test/whatsapp")
+async def admin_test_whatsapp(cid: str, request: Request):
+    await require_admin(request)
+    clients = await pb_list("clients", filter=f"id='{cid}'")
+    if not clients:
+        raise HTTPException(status_code=404, detail="Client not found")
+    st = _wa_state(clients[0])
+    return {"ok": st == "open", "detail": f"Evolution state: {st}"}
+
+
+@app.post("/api/admin/clients/{cid}/test/yeastar")
+async def admin_test_yeastar(cid: str, request: Request):
+    await require_admin(request)
+    clients = await pb_list("clients", filter=f"id='{cid}'")
+    if not clients:
+        raise HTTPException(status_code=404, detail="Client not found")
+    c = clients[0]
+    env = {"yeastar_base": os.environ.get("YEASTAR_BASE_URL", ""), "yeastar_username": os.environ.get("YEASTAR_CLIENT_ID", ""), "yeastar_password": os.environ.get("YEASTAR_CLIENT_SECRET", "")}
+    base, user, pw = (c.get(k) or env.get(k, "") for k in ("yeastar_base", "yeastar_username", "yeastar_password"))
+    if not (base and user and pw):
+        raise HTTPException(status_code=400, detail="Yeastar creds not configured for this client")
+    try:
+        await yt_token(base, user, pw)
+        return {"ok": True, "detail": "PBX token OK"}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)[:200]}
+
+
+@app.get("/api/admin/stats")
+async def admin_stats(request: Request, days: int = 30):
+    await require_admin(request)
+    # ponytail: compute-on-read; swap for a daily rollup collection if volume grows
+    import datetime as dt
+    start = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    counts: dict[str, dict] = {}
+    for coll, key in (("leads", "leads"), ("messages", "messages")):
+        for rec in await pb_list(coll, perPage=500, filter=f"created_at>'{start}'"):
+            cid = rec.get("client")
+            if not cid:
+                continue
+            day = (rec.get("created_at") or "")[:10]
+            counts.setdefault(cid, {}).setdefault(day, {"leads": 0, "messages": 0})[key] += 1
+    out = []
+    for c in await pb_list("clients", perPage=100):
+        series = [{"day": d, **counts.get(c["id"], {}).get(d, {"leads": 0, "messages": 0})}
+                  for d in ((dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1))]
+        out.append({"client": c["id"], "name": c.get("name"), "series": series})
+    return out
+
+
+@app.post("/api/admin/clients")
+async def admin_create_client(request: Request):
+    """Admin-only: mint a client account (signup is closed)."""
+    rec = await require_admin(request)
     body = await request.json()
     name, email, pw = (body.get("name") or "").strip(), (body.get("email") or "").strip().lower(), body.get("password") or ""
     if not name or "@" not in email or len(pw) < 8:
@@ -713,59 +814,77 @@ async def broadcast_worker():
 
 
 # ---------------------------------------------------------------- Yeastar CDR poller
-_yt_token: str | None = None
-_yt_token_exp = 0.0
+_yt_tokens: dict[tuple[str, str], tuple[str, float]] = {}  # (base,user) -> (token, exp)
 
 
-async def yt_token() -> str:
-    global _yt_token, _yt_token_exp
-    if _yt_token and time.monotonic() < _yt_token_exp - 60:
-        return str(_yt_token)
+async def yt_token(base: str, user: str, pw: str) -> str:
+    key = (base, user)
+    cached = _yt_tokens.get(key)
+    if cached and time.monotonic() < cached[1] - 60:
+        return cached[0]
     async with httpx.AsyncClient(timeout=15) as cl:
-        r = await cl.post(f"{YEASTAR_BASE}/get_token", headers={"User-Agent": "OpenAPI"},
-                          json={"username": YEASTAR_ID, "password": YEASTAR_SECRET})
+        r = await cl.post(f"{base}/get_token", headers={"User-Agent": "OpenAPI"},
+                          json={"username": user, "password": pw})
         r.raise_for_status()
         d = r.json()
     if d.get("errcode") != 0:
         raise RuntimeError(f"Yeastar get_token: {d}")
-    _yt_token = str(d["access_token"])
-    _yt_token_exp = time.monotonic() + 1700
-    return _yt_token
+    _yt_tokens[key] = (str(d["access_token"]), time.monotonic() + 1700)
+    return _yt_tokens[key][0]
+
+
+async def poll_pbx(base: str, user: str, pw: str, state: dict) -> None:
+    """One CDR poll pass for one PBX. state = {'baseline': bool, 'seen_top': uid} kept per-PBX."""
+    tok = await yt_token(base, user, pw)
+    async with httpx.AsyncClient(timeout=30) as cl:
+        r = await cl.get(f"{base}/cdr/list", params={
+            "access_token": tok, "page_size": 50, "sort_by": "uid", "order_by": "desc",
+        }, headers={"User-Agent": "OpenAPI"})
+        r.raise_for_status()
+        rows = r.json().get("data") or []
+    if state["baseline"]:
+        state["seen_top"] = rows[0]["uid"] if rows else ""
+        log.info("PBX %s baseline: %d CDRs, top uid %s", base, len(rows), state["seen_top"])
+        state["baseline"] = False
+        return
+    for c in rows:
+        if c["uid"] == state["seen_top"]:
+            break
+        if c.get("call_type") == "Inbound" and c.get("last_status") in ("NO ANSWER", "ABANDONED"):
+            caller = norm_phone(str(c.get("call_from_number") or c.get("call_from") or ""))
+            did = norm_phone(str(c.get("did_number") or c.get("call_to_number") or ""))
+            if caller:
+                await handle_missed_call(
+                    caller,
+                    f"Yeastar missed call ({c.get('last_status')}) {c.get('time', '')}",
+                    ext_id=c["uid"], did=did,
+                )
+    if rows:
+        state["seen_top"] = rows[0]["uid"]
 
 
 async def yeastar_poller():
-    """Poll PBX CDR list every 60s; first pass = baseline (mark seen, send nothing)."""
-    log.info("yeastar poller started (%s)", YEASTAR_BASE)
-    baseline = True
-    seen_top = ""
+    """Poll every active client's PBX (plus env-configured PBX for backward compat) every 60s."""
+    log.info("yeastar poller started")
+    states: dict[tuple, dict] = {}  # ponytail: per-PBX (base,user) state; dedupe across PBXes handled by ext_id
     while True:
         try:
-            tok = await yt_token()
-            async with httpx.AsyncClient(timeout=30) as cl:
-                r = await cl.get(f"{YEASTAR_BASE}/cdr/list", params={
-                    "access_token": tok, "page_size": 50, "sort_by": "uid", "order_by": "desc",
-                }, headers={"User-Agent": "OpenAPI"})
-                r.raise_for_status()
-                rows = r.json().get("data") or []
-            if baseline:
-                seen_top = rows[0]["uid"] if rows else ""
-                log.info("yeastar baseline: %d CDRs, top uid %s", len(rows), seen_top)
-                baseline = False
-            else:
-                for c in rows:
-                    if c["uid"] == seen_top:
-                        break
-                    if c.get("call_type") == "Inbound" and c.get("last_status") in ("NO ANSWER", "ABANDONED"):
-                        caller = norm_phone(str(c.get("call_from_number") or c.get("call_from") or ""))
-                        did = norm_phone(str(c.get("did_number") or c.get("call_to_number") or ""))
-                        if caller:
-                            await handle_missed_call(
-                                caller,
-                                f"Yeastar missed call ({c.get('last_status')}) {c.get('time', '')}",
-                                ext_id=c["uid"], did=did,
-                            )
-                if rows:
-                    seen_top = rows[0]["uid"]
+            pbxs = []
+            try:
+                clients = await pb_list("clients", filter='active = true && yeastar_base != ""', perPage=200)
+            except Exception as e:
+                log.warning("PBX client fetch failed (migration applied?): %s", e)
+                clients = []
+            for c in clients:
+                pbxs.append((c["yeastar_base"], c.get("yeastar_username") or "", c.get("yeastar_password") or ""))
+            if YEASTAR_BASE:
+                pbxs.append((YEASTAR_BASE, YEASTAR_ID, YEASTAR_SECRET))
+            for base, user, pw in pbxs:
+                state = states.setdefault((base, user), {"baseline": True, "seen_top": ""})
+                try:
+                    await poll_pbx(base, user, pw, state)
+                except Exception as e:
+                    log.error("poll %s (%s): %s", base, user, e)
         except Exception as e:
             log.error("yeastar poll error: %s", e)
         await asyncio.sleep(60)
