@@ -26,21 +26,19 @@ function Login({ onOk }: { onOk: (c: RecordModel) => void }) {
       </div>
       <div className="card">
         <h3>Sign in to SmartConnect</h3>
-        {showName && <input placeholder="Business name" value={name} onChange={e => setName(e.target.value)} />}
         <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input placeholder="Password (8+ characters)" type="password" value={pw} onChange={e => setPw(e.target.value)} />
         {err && <p className="err">{err}</p>}
         <button onClick={async () => {
           try { await pb.collection('clients').authWithPassword(email, pw); onOk(pb.authStore.record!) }
           catch {
-            setShowName(true)
             try {
               await pb.collection('clients').create({ email, password: pw, passwordConfirm: pw, name: name || email.split('@')[0] })
               await pb.collection('clients').authWithPassword(email, pw); onOk(pb.authStore.record!)
-            } catch { setErr('Login failed — new accounts need email + 8+ char password') }
+            } catch { setErr('Invalid email or password — accounts are issued by Smart Integrate') }
           }
-        }}>Sign in / Sign up</button>
-        <p className="small" style={{ marginTop: 10, textAlign: 'center' }}>Existing account? Same button — we detect it.</p>
+        }}>Sign in</button>
+        <p className="small" style={{ marginTop: 10, textAlign: 'center' }}>Need an account? Contact Smart Integrate.</p>
       </div>
     </div>
   )
