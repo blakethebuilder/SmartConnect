@@ -93,7 +93,7 @@ async def pb_update(collection: str, rid: str, data: dict) -> dict:
 
 
 # ---------------------------------------------------------------- Evolution
-async def evolution_send(client: dict, number: str, text: str) -> None:
+async def evolution_send(client: dict, number: str, text: str, kind: str = "other") -> None:
     """POST {evolution_url}/message/sendText/{instance} with apiKey header."""
     url = f"{client['evolution_url'].rstrip('/')}/message/sendText/{client['evolution_instance']}"
     async with httpx.AsyncClient(timeout=30) as cl:
@@ -102,6 +102,16 @@ async def evolution_send(client: dict, number: str, text: str) -> None:
             json={"number": number, "text": text},
             headers={"apiKey": client.get("evolution_apikey") or ""},
         )
+    # message log: every outbound WhatsApp shows in the dashboard
+    try:
+        await pb_create("messages", {
+            "client": client["id"], "phone": number, "body": text[:400],
+            "kind": kind,
+            "status": "sent" if r.status_code < 400 else "failed",
+            "error": "" if r.status_code < 400 else r.text[:200],
+        })
+    except Exception as e:
+        log.warning("message log failed: %s", e)
     if r.status_code >= 400:
         raise RuntimeError(f"Evolution {r.status_code}: {r.text[:200]}")
 
@@ -302,6 +312,7 @@ async def handle_missed_call(caller: str, note: str, ext_id: str | None = None, 
         await evolution_send(
             client, caller,
             f"Sorry we missed your call. This is {client.get('name', 'us')} — reply here and we'll help you right away.",
+            kind="missed_call",
         )
     except Exception as e:
         log.error("Missed-call WhatsApp send failed: %s", e)
@@ -350,6 +361,7 @@ async def yeastar_webhook(request: Request):
         await evolution_send(
             client, caller,
             f"Sorry we missed your call. This is {client.get('name', 'us')} — reply here and we'll help you right away.",
+            kind="missed_call",
         )
     except Exception as e:
         log.error("Missed-call WhatsApp send failed: %s", e)
@@ -468,7 +480,7 @@ async def create_payment_link(client: dict, phone: str, amount: float | None = N
     })
     link = f"https://paynow.netcash.co.za/site/paynow.aspx?{qs}"
     await pb_update("payments", pay["id"], {"netcash_link": link})
-    await evolution_send(client, phone, f"Here is your secure payment link: {link}")
+    await evolution_send(client, phone, f"Here is your secure payment link: {link}", kind="payment_link")
     return pay
 
 
@@ -666,7 +678,7 @@ async def broadcast_worker():
                     await pb_update("broadcasts", bc["id"], {"status": "paused"})
                     break
                 try:
-                    await evolution_send(client, contact["phone"], bc["template"])
+                    await evolution_send(client, contact["phone"], bc["template"], kind="broadcast")
                     await pb_update("broadcast_msgs", m["id"], {"status": "sent"})
                     sent_today += 1
                     await pb_update("clients", client["id"], {"warmup_msgs_sent": sent_today})
@@ -783,7 +795,7 @@ async def worker_pass() -> dict:
             await pb_update("broadcasts", bc["id"], {"sent_count": int(bc.get("sent_count") or 0) + done})
             return {"paused": "fail-rate", "sent": done}
         try:
-            await evolution_send(client, contact["phone"], bc["template"])
+            await evolution_send(client, contact["phone"], bc["template"], kind="broadcast")
             await pb_update("broadcast_msgs", m["id"], {"status": "sent"})
             sent_today += 1
             await pb_update("clients", client["id"], {"warmup_msgs_sent": sent_today})

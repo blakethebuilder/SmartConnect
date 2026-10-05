@@ -111,6 +111,7 @@ function Overview({ me }: { me: RecordModel }) {
   const contacts = useCol('contacts', me)
   const broadcasts = useCol('broadcasts', me)
   const payments = useCol('payments', me)
+  const msgs = useCol('messages', me).sort((a,b) => (a.created||'') < (b.created||'') ? 1 : -1).slice(0, 5)
   const used = me.warmup_msgs_sent || 0, cap = me.daily_send_cap || 250
   const sent = broadcasts.reduce((n, b) => n + (b.sent_count || 0), 0)
   const optins = contacts.filter(c => !c.stopped).length
@@ -128,6 +129,15 @@ function Overview({ me }: { me: RecordModel }) {
       <div className="bar"><div style={{ width: `${Math.min(100, (used / cap) * 100)}%` }} /></div>
       <p className="small">Warm-up ramp active — your cap grows as the number proves itself. Opt-in contacts only; STOP is handled automatically.</p>
     </div>
+    <div className="list-head">Recent messages</div>
+    {!msgs.length && <Empty icon={<Icon name="message" />} title="No messages yet" sub="Every WhatsApp you send lands here — missed-call replies, broadcasts and payment links." />}
+    {msgs.map(m => (
+      <div className="card" key={m.id}>
+        <div className="row"><h3>{m.phone}</h3><Badge kind={m.status === 'sent' ? 'ok' : 'off'}>{m.kind}</Badge></div>
+        <p className="small" style={{ margin: '4px 0 0' }}>{m.body}</p>
+        <p className="small" style={{ margin: '2px 0 0' }}>{m.created?.slice(0, 16).replace('T', ' ')} UTC</p>
+      </div>
+    ))}
     <div className="card">
       <div className="row"><h3>WhatsApp connection</h3><Badge kind={wired ? 'ok' : 'warn'}>{wired ? 'Connected' : 'Not connected'}</Badge></div>
       <p className="small">{wired ? `Instance ${me.evolution_instance} is ready to send.` : 'Add your Evolution API details in Settings to start broadcasting.'}</p>
