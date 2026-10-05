@@ -541,9 +541,8 @@ async def require_admin(request: Request) -> dict:
 def _wa_state(client: dict):
     try:
         h = {"apikey": client["evolution_apikey"]}
-        async with httpx.AsyncClient(timeout=10) as cl:
-            r = cl.get(f"{client['evolution_url'].rstrip('/')}/instance/connectionState/{client['evolution_instance']}", headers=h)
-            return (r.json().get("instance") or {}).get("state")
+        r = httpx.get(f"{client['evolution_url'].rstrip('/')}/instance/connectionState/{client['evolution_instance']}", headers=h, timeout=10)
+        return (r.json().get("instance") or {}).get("state")
     except Exception:
         return None
 
