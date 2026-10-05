@@ -48,7 +48,7 @@ function Login({ onOk }: { onOk: (c: RecordModel) => void }) {
 
 function Dashboard({ me }: { me: RecordModel }) {
   const [tab, setTab] = useState<Tab>('Overview')
-  const tabs: Tab[] = ['Overview', 'Leads', 'Broadcast', 'Payments', 'Contacts', 'Settings']
+  const tabs: Tab[] = ['Overview', 'Leads', 'Broadcast', 'Payments', 'Contacts', 'Settings', ...(me.admin ? ['Admin' as Tab] : [])]
   return (
     <div className="wrap">
       <header className="appbar">
@@ -298,6 +298,29 @@ function WaConnect({ me }: { me: RecordModel }) {
     {qr && <img src={qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`} alt="WhatsApp QR" style={{ width: 220, marginTop: 12, borderRadius: 8 }} />}
     {pairing && !qr && <p className="small">Or enter pairing code on your phone: <b>{pairing}</b></p>}
   </>
+}
+
+function AdminPanel({ me }: { me: RecordModel }) {
+  const [name, setName] = useState(''), [email, setEmail] = useState(''), [pw, setPw] = useState(''), [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  return <Section title="New client" sub="Mint an account for a customer — they log in, scan the QR, you wire their PBX webhook.">
+    <div className="card">
+      <input placeholder="Business name" value={name} onChange={e => setName(e.target.value)} />
+      <input placeholder="Client email" value={email} onChange={e => setEmail(e.target.value)} />
+      <input placeholder="Password (8+ chars)" value={pw} onChange={e => setPw(e.target.value)} />
+      <button disabled={busy} onClick={async () => {
+        setBusy(true); setMsg('')
+        try {
+          const r = await fetch('/api/admin/clients', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pb.authStore.token}` }, body: JSON.stringify({ name, email, password: pw }) })
+          const d = await r.json()
+          if (!r.ok) throw new Error(d.detail || 'failed')
+          setMsg(`Created ${name} — pass them the email + password`); setName(''); setEmail(''); setPw('')
+        } catch (e: any) { setMsg(e.message) }
+        setBusy(false)
+      }}>{busy ? 'Creating…' : 'Create client'}</button>
+      {msg && <p className="small">{msg}</p>}
+    </div>
+  </Section>
 }
 
 function Settings({ me }: { me: RecordModel }) {

@@ -531,6 +531,25 @@ def _bearer(request: Request) -> str:
     return (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
 
 
+@app.post("/api/admin/clients")
+async def admin_create_client(request: Request):
+    """Admin-only: mint a client account (signup is closed)."""
+    rec = await auth_client_record(_bearer(request))
+    if not rec.get("admin"):
+        raise HTTPException(status_code=403, detail="Admin only")
+    body = await request.json()
+    name, email, pw = (body.get("name") or "").strip(), (body.get("email") or "").strip().lower(), body.get("password") or ""
+    if not name or "@" not in email or len(pw) < 8:
+        raise HTTPException(status_code=400, detail="Business name, valid email and 8+ char password required")
+    try:
+        r = await pb("POST", "/api/collections/clients/records", json={
+            "name": name, "email": email, "password": pw, "passwordConfirm": pw, "active": True})
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return {"ok": True, "id": r.json()["id"]}
+
+
 @app.post("/api/whatsapp/connect")
 async def whatsapp_connect(request: Request):
     rec = await auth_client_record(_bearer(request))
