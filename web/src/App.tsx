@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { pb, API } from './pb'
 import Landing from './Landing'
+import Icon from './icons'
 import type { RecordModel } from 'pocketbase'
 
 // ponytail: one file, six tabs — split only if a tab grows past ~150 lines
@@ -82,7 +83,7 @@ function Badge({ kind, children }: { kind: 'ok' | 'warn' | 'off'; children: Reac
   return <span className={`badge ${kind}`}>{children}</span>
 }
 
-function Empty({ icon, title, sub }: { icon: string; title: string; sub: string }) {
+function Empty({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
   return <div className="card empty">
     <div className="empty-icon">{icon}</div>
     <strong>{title}</strong>
@@ -130,7 +131,7 @@ function Overview({ me }: { me: RecordModel }) {
       <div className="row"><h3>WhatsApp connection</h3><Badge kind={wired ? 'ok' : 'warn'}>{wired ? 'Connected' : 'Not connected'}</Badge></div>
       <p className="small">{wired ? `Instance ${me.evolution_instance} is ready to send.` : 'Add your Evolution API details in Settings to start broadcasting.'}</p>
     </div>
-    {!leads.length && <Empty icon="📡" title="No leads yet" sub="Leads arrive automatically when someone misses your call or messages your number." />}
+    {!leads.length && <Empty icon={<Icon name="inbox" />} title="No leads yet" sub="Leads arrive automatically when someone misses your call or messages your number." />}
     {leads.slice(0, 3).map(l => (
       <div className="card" key={l.id}>
         <div className="row"><h3>{l.name || l.phone}</h3><span className="small">{l.source}</span></div>
@@ -150,7 +151,7 @@ function Leads({ me }: { me: RecordModel }) {
         {l.notes && <p>{l.notes}</p>}
       </div>
     ))}
-    {!leads.length && <Empty icon="📡" title="No leads yet" sub="Leads arrive automatically when someone misses your call or messages your number." />}
+    {!leads.length && <Empty icon={<Icon name="inbox" />} title="No leads yet" sub="Leads arrive automatically when someone misses your call or messages your number." />}
   </Section>
 }
 
@@ -198,7 +199,7 @@ function Broadcast({ me }: { me: RecordModel }) {
         <p className="small">{b.sent_count || 0} sent</p>
       </div>
     ))}
-    {!bcs.length && <Empty icon="💬" title="Nothing sent yet" sub="Your first broadcast will show up here with live delivery counts." />}
+    {!bcs.length && <Empty icon={<Icon name="message" />} title="Nothing sent yet" sub="Your first broadcast will show up here with live delivery counts." />}
   </Section>
 }
 
@@ -231,7 +232,7 @@ function Payments({ me }: { me: RecordModel }) {
         <p className="small">{p.amount ? `R${p.amount}` : 'Amount on link'}</p>
       </div>
     ))}
-    {!pays.length && <Empty icon="💸" title="No payments yet" sub="Create a link above — it lands in their WhatsApp in seconds." />}
+    {!pays.length && <Empty icon={<Icon name="wallet" />} title="No payments yet" sub="Create a link above — it lands in their WhatsApp in seconds." />}
   </Section>
 }
 
@@ -261,7 +262,7 @@ function Contacts({ me }: { me: RecordModel }) {
         </div>
       </div>
     ))}
-    {!contacts.length && <Empty icon="👥" title="No contacts yet" sub="Add your first opted-in number above to unlock broadcasting." />}
+    {!contacts.length && <Empty icon={<Icon name="users" />} title="No contacts yet" sub="Add your first opted-in number above to unlock broadcasting." />}
   </Section>
 }
 
